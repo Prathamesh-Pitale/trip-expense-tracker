@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Trip Expense Tracker</title>
-    <link rel="stylesheet" href="style.css?v=4">
+    <link rel="stylesheet" href="style.css?v=5">
 </head>
 <body>
     <div id="app">
@@ -49,7 +49,7 @@
                 <input type="hidden" id="edit-expense-id">
                 <input type="text" id="exp-name" placeholder="Expense Name (e.g., Dinner)">
                 <input type="text" id="exp-desc" placeholder="Description">
-                <input type="number" id="exp-amount" step="0.01" placeholder="Amount">
+                <input type="number" id="exp-amount" step="0.01" placeholder="Amount (₹)">
 
                 <select id="exp-paid-by"><option value="">Paid By...</option></select>
 
@@ -84,8 +84,8 @@
                     </table>
                 </div>
                 <div class="totals-box">
-                    <p id="total-trip-expense">Total Trip Expense: $0.00</p>
-                    <p id="unsettled-trip-expense">Unsettled Remaining: $0.00</p>
+                    <p id="total-trip-expense">Total Trip Expense: ₹0.00</p>
+                    <p id="unsettled-trip-expense">Unsettled Remaining: ₹0.00</p>
                 </div>
             </div>
 
@@ -115,6 +115,6 @@
             </div>
         </div>
     </div>
-    <script src="app.js?v=4"></script>
+    <script src="app.js?v=5"></script>
 </body>
 </html>
