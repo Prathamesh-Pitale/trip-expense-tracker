@@ -22,13 +22,21 @@ function escapeHtml(str) {
         .replace(/"/g, "&quot;");
 }
 
+function formatMoney(val) {
+    const num = Number(val) || 0;
+    return "₹" + num.toLocaleString("en-IN", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    });
+}
+
 function formatNetLabel(net, getsBackText = "(Gets Back)", owesText = "(Owes)") {
     if (Math.abs(net) < 0.005) {
-        return `<span class="neutral">$0.00 (Settled / Even)</span>`;
+        return `<span class="neutral">₹0.00 (Settled / Even)</span>`;
     }
     const cls = net > 0 ? "positive" : "negative";
     const label = net > 0 ? getsBackText : owesText;
-    return `<span class="${cls}">$${Math.abs(net).toFixed(2)} ${label}</span>`;
+    return `<span class="${cls}">${formatMoney(Math.abs(net))} ${label}</span>`;
 }
 
 async function init() {
@@ -305,7 +313,6 @@ function calculateTripBalances(tripPeople, tripExpenses) {
     return balances;
 }
 
-// Pairwise settlement: matches debtors to creditors for unsettled expenses
 function computeSettlements(balances) {
     const debtors = [];
     const creditors = [];
@@ -389,7 +396,7 @@ function renderDashboard() {
             <td>${statusBadge}</td>
             <td class="strike">${escapeHtml(e.name)}</td>
             <td>${escapeHtml(e.desc || "")}</td>
-            <td class="strike">$${amt.toFixed(2)}</td>
+            <td class="strike">${formatMoney(amt)}</td>
             <td>${escapeHtml(payerName)}</td>
             <td>${escapeHtml(e.type + targetName)}</td>
             <td class="actions-col">
@@ -402,8 +409,8 @@ function renderDashboard() {
         </tr>`;
     });
 
-    document.getElementById("total-trip-expense").innerText = `Total Trip Expense: $${totalExp.toFixed(2)}`;
-    document.getElementById("unsettled-trip-expense").innerText = `Unsettled Remaining: $${unsettledExp.toFixed(2)}`;
+    document.getElementById("total-trip-expense").innerText = `Total Trip Expense: ${formatMoney(totalExp)}`;
+    document.getElementById("unsettled-trip-expense").innerText = `Unsettled Remaining: ${formatMoney(unsettledExp)}`;
 
     const balances = calculateTripBalances(tripPeople, tripExpenses);
     const balTbody = document.getElementById("balances-tbody");
@@ -413,8 +420,8 @@ function renderDashboard() {
         const net = b.paid - b.share;
         balTbody.innerHTML += `<tr>
             <td>${escapeHtml(b.name)}</td>
-            <td>$${b.paid.toFixed(2)}</td>
-            <td>$${b.share.toFixed(2)}</td>
+            <td>${formatMoney(b.paid)}</td>
+            <td>${formatMoney(b.share)}</td>
             <td>${formatNetLabel(net)}</td>
         </tr>`;
     });
@@ -462,14 +469,14 @@ function renderIndividualView() {
             if (e.type === "Split" && tripPeople.length > 0) {
                 const ownShare = amt / tripPeople.length;
                 const othersShare = amt - ownShare;
-                paidNote = `Split — own share $${ownShare.toFixed(2)}, gets back $${othersShare.toFixed(2)}`;
+                paidNote = `Split — own share ${formatMoney(ownShare)}, gets back ${formatMoney(othersShare)}`;
             } else if (e.type === "Individual" && targetKey === personId) {
-                paidNote = `Individual for self — $0.00 owed by others`;
+                paidNote = `Individual for self — ₹0.00 owed by others`;
             } else if (e.type === "Individual") {
-                paidNote = `Individual paid for ${escapeHtml(targetName)} — gets back $${amt.toFixed(2)}`;
+                paidNote = `Individual paid for ${escapeHtml(targetName)} — gets back ${formatMoney(amt)}`;
             }
 
-            paidItemsHtml += `<li><strong>${escapeHtml(e.name)}</strong>: Paid $${amt.toFixed(2)} <em>(${paidNote})</em>${settledTag}</li>`;
+            paidItemsHtml += `<li><strong>${escapeHtml(e.name)}</strong>: Paid ${formatMoney(amt)} <em>(${paidNote})</em>${settledTag}</li>`;
         }
 
         // 2. Expenses Consumed / Share Assigned To This Person
@@ -479,7 +486,7 @@ function renderIndividualView() {
                 ? '<span class="badge badge-self">Self-paid</span>'
                 : `Paid by ${escapeHtml(payerName)}`;
 
-            shareItemsHtml += `<li><strong>${escapeHtml(e.name)}</strong>: $${splitAmt.toFixed(2)} <em>(Split share of $${amt.toFixed(2)} — ${payerTag})</em>${settledTag}</li>`;
+            shareItemsHtml += `<li><strong>${escapeHtml(e.name)}</strong>: ${formatMoney(splitAmt)} <em>(Split share of ${formatMoney(amt)} — ${payerTag})</em>${settledTag}</li>`;
             totalOverallShare += splitAmt;
             if (!settled) unsettledShare += splitAmt;
 
@@ -488,7 +495,7 @@ function renderIndividualView() {
                 ? '<span class="badge badge-self">Self-paid</span>'
                 : `Paid by ${escapeHtml(payerName)}`;
 
-            shareItemsHtml += `<li><strong>${escapeHtml(e.name)}</strong>: $${amt.toFixed(2)} <em>(Individual — ${payerTag})</em>${settledTag}</li>`;
+            shareItemsHtml += `<li><strong>${escapeHtml(e.name)}</strong>: ${formatMoney(amt)} <em>(Individual — ${payerTag})</em>${settledTag}</li>`;
             totalOverallShare += amt;
             if (!settled) unsettledShare += amt;
         }
@@ -508,9 +515,9 @@ function renderIndividualView() {
         settlementLines = '<ul style="margin:6px 0 0 0; padding-left:20px;">';
         settlements.forEach(t => {
             if (t.fromId === personId) {
-                settlementLines += `<li class="negative">${escapeHtml(personName)} owes ${escapeHtml(t.toName)}: $${t.amount.toFixed(2)}</li>`;
+                settlementLines += `<li class="negative">${escapeHtml(personName)} owes ${escapeHtml(t.toName)}: ${formatMoney(t.amount)}</li>`;
             } else {
-                settlementLines += `<li class="positive">${escapeHtml(t.fromName)} owes ${escapeHtml(personName)}: $${t.amount.toFixed(2)}</li>`;
+                settlementLines += `<li class="positive">${escapeHtml(t.fromName)} owes ${escapeHtml(personName)}: ${formatMoney(t.amount)}</li>`;
             }
         });
         settlementLines += "</ul>";
@@ -526,8 +533,8 @@ function renderIndividualView() {
             ${shareItemsHtml ? `<ul>${shareItemsHtml}</ul>` : `<p class="muted" style="margin:0;">No expenses assigned to ${escapeHtml(personName)}.</p>`}
         </div>
         <div class="ind-summary">
-            <p><strong>Total Paid Out of Pocket (Unsettled):</strong> $${unsettledPaid.toFixed(2)}</p>
-            <p><strong>Total Share / Personal Cost (Unsettled):</strong> $${unsettledShare.toFixed(2)} <span class="muted">(Overall incl. settled: $${totalOverallShare.toFixed(2)})</span></p>
+            <p><strong>Total Paid Out of Pocket (Unsettled):</strong> ${formatMoney(unsettledPaid)}</p>
+            <p><strong>Total Share / Personal Cost (Unsettled):</strong> ${formatMoney(unsettledShare)} <span class="muted">(Overall incl. settled: ${formatMoney(totalOverallShare)})</span></p>
             <p><strong>Net Balance for ${escapeHtml(personName)}:</strong> ${formatNetLabel(net, `(${personName} Gets Back)`, `(${personName} Owes)`)}</p>
             ${settlementLines}
         </div>
