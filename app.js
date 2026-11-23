@@ -22,6 +22,15 @@ function escapeHtml(str) {
         .replace(/"/g, "&quot;");
 }
 
+function formatNetLabel(net, getsBackText = "(Gets Back)", owesText = "(Owes)") {
+    if (Math.abs(net) < 0.005) {
+        return `<span class="neutral">$0.00 (Settled / Even)</span>`;
+    }
+    const cls = net > 0 ? "positive" : "negative";
+    const label = net > 0 ? getsBackText : owesText;
+    return `<span class="${cls}">$${Math.abs(net).toFixed(2)} ${label}</span>`;
+}
+
 async function init() {
     setStatus("Loading data from Google Sheets...");
     try {
@@ -263,7 +272,70 @@ function toggleSettleExpense(expenseId) {
     renderDashboard();
 }
 
-// --- RENDER DASHBOARD & BALANCES ---
+// --- CALCULATIONS & RENDERING ---
+
+function calculateTripBalances(tripPeople, tripExpenses) {
+    const balances = {};
+    tripPeople.forEach(p => {
+        balances[String(p.id).trim()] = { id: String(p.id).trim(), name: p.name, paid: 0, share: 0 };
+    });
+
+    tripExpenses.forEach(e => {
+        if (isSettled(e)) return;
+        const amt = parseFloat(e.amount) || 0;
+        const paidByKey = String(e.paidBy).trim();
+
+        if (balances[paidByKey]) {
+            balances[paidByKey].paid += amt;
+        }
+
+        if (e.type === "Split" && tripPeople.length > 0) {
+            const splitAmt = amt / tripPeople.length;
+            tripPeople.forEach(p => {
+                balances[String(p.id).trim()].share += splitAmt;
+            });
+        } else if (e.type === "Individual") {
+            const targetKey = String(e.target).trim();
+            if (balances[targetKey]) {
+                balances[targetKey].share += amt;
+            }
+        }
+    });
+
+    return balances;
+}
+
+// Pairwise settlement: matches debtors to creditors for unsettled expenses
+function computeSettlements(balances) {
+    const debtors = [];
+    const creditors = [];
+
+    Object.values(balances).forEach(b => {
+        const net = b.paid - b.share;
+        if (net < -0.005) debtors.push({ id: b.id, name: b.name, amount: -net });
+        else if (net > 0.005) creditors.push({ id: b.id, name: b.name, amount: net });
+    });
+
+    const transfers = [];
+    let i = 0, j = 0;
+    while (i < debtors.length && j < creditors.length) {
+        const pay = Math.min(debtors[i].amount, creditors[j].amount);
+        if (pay > 0.005) {
+            transfers.push({
+                fromId: debtors[i].id,
+                fromName: debtors[i].name,
+                toId: creditors[j].id,
+                toName: creditors[j].name,
+                amount: pay
+            });
+        }
+        debtors[i].amount -= pay;
+        creditors[j].amount -= pay;
+        if (debtors[i].amount < 0.005) i++;
+        if (creditors[j].amount < 0.005) j++;
+    }
+    return transfers;
+}
 
 function renderDashboard() {
     const tripPeople = data.people.filter(p => String(p.tripId).trim() === String(activeTripId).trim());
@@ -294,11 +366,6 @@ function renderDashboard() {
 
     let totalExp = 0;
     let unsettledExp = 0;
-
-    const balances = {};
-    tripPeople.forEach(p => {
-        balances[String(p.id).trim()] = { name: p.name, paid: 0, share: 0 };
-    });
 
     tripExpenses.forEach(e => {
         const amt = parseFloat(e.amount) || 0;
@@ -333,40 +400,22 @@ function renderDashboard() {
                 </div>
             </td>
         </tr>`;
-
-        if (!settled) {
-            const paidByKey = String(e.paidBy).trim();
-            if (balances[paidByKey]) {
-                balances[paidByKey].paid += amt;
-            }
-
-            if (e.type === "Split" && tripPeople.length > 0) {
-                const splitAmt = amt / tripPeople.length;
-                tripPeople.forEach(p => {
-                    balances[String(p.id).trim()].share += splitAmt;
-                });
-            } else if (e.type === "Individual") {
-                const targetKey = String(e.target).trim();
-                if (balances[targetKey]) {
-                    balances[targetKey].share += amt;
-                }
-            }
-        }
     });
 
     document.getElementById("total-trip-expense").innerText = `Total Trip Expense: $${totalExp.toFixed(2)}`;
     document.getElementById("unsettled-trip-expense").innerText = `Unsettled Remaining: $${unsettledExp.toFixed(2)}`;
 
+    const balances = calculateTripBalances(tripPeople, tripExpenses);
     const balTbody = document.getElementById("balances-tbody");
     balTbody.innerHTML = "";
+
     Object.values(balances).forEach(b => {
         const net = b.paid - b.share;
-        const netClass = net >= 0 ? "positive" : "negative";
         balTbody.innerHTML += `<tr>
             <td>${escapeHtml(b.name)}</td>
             <td>$${b.paid.toFixed(2)}</td>
             <td>$${b.share.toFixed(2)}</td>
-            <td class="${netClass}">$${Math.abs(net).toFixed(2)} ${net >= 0 ? "(Gets Back)" : "(Owes)"}</td>
+            <td>${formatNetLabel(net)}</td>
         </tr>`;
     });
 
@@ -374,7 +423,7 @@ function renderDashboard() {
 }
 
 function renderIndividualView() {
-    const personId = document.getElementById("ind-view-select").value;
+    const personId = String(document.getElementById("ind-view-select").value).trim();
     const content = document.getElementById("ind-view-content");
     if (!personId) {
         content.innerHTML = "";
@@ -382,33 +431,107 @@ function renderIndividualView() {
     }
 
     const tripPeople = data.people.filter(p => String(p.tripId).trim() === String(activeTripId).trim());
-    let html = '<ul style="margin: 0; padding-left: 20px;">';
-    let unsettledBurden = 0;
-    let totalBurden = 0;
+    const tripExpenses = data.expenses.filter(e => String(e.tripId).trim() === String(activeTripId).trim());
+    const selectedPerson = tripPeople.find(p => String(p.id).trim() === personId);
+    const personName = selectedPerson ? selectedPerson.name : "Person";
 
-    data.expenses
-        .filter(e => String(e.tripId).trim() === String(activeTripId).trim())
-        .forEach(e => {
-            const amt = parseFloat(e.amount) || 0;
-            const settled = isSettled(e);
-            const settledTag = settled ? ' <span class="badge badge-settled">Settled</span>' : "";
+    let paidItemsHtml = "";
+    let shareItemsHtml = "";
 
+    let unsettledPaid = 0;
+    let unsettledShare = 0;
+    let totalOverallShare = 0;
+
+    tripExpenses.forEach(e => {
+        const amt = parseFloat(e.amount) || 0;
+        const settled = isSettled(e);
+        const paidByKey = String(e.paidBy).trim();
+        const targetKey = String(e.target).trim();
+        const payer = tripPeople.find(p => String(p.id).trim() === paidByKey);
+        const payerName = payer ? payer.name : "Unknown";
+        const targetPerson = tripPeople.find(p => String(p.id).trim() === targetKey);
+        const targetName = targetPerson ? targetPerson.name : "Unknown";
+
+        const settledTag = settled ? ' <span class="badge badge-settled">Settled</span>' : "";
+
+        // 1. Expenses Paid By This Person
+        if (paidByKey === personId) {
+            if (!settled) unsettledPaid += amt;
+
+            let paidNote = "";
             if (e.type === "Split" && tripPeople.length > 0) {
-                const splitAmt = amt / tripPeople.length;
-                html += `<li><strong>${escapeHtml(e.name)}</strong>: $${splitAmt.toFixed(2)} <em>(Split share of $${amt.toFixed(2)})</em>${settledTag}</li>`;
-                totalBurden += splitAmt;
-                if (!settled) unsettledBurden += splitAmt;
-            } else if (e.type === "Individual" && String(e.target).trim() === String(personId).trim()) {
-                html += `<li><strong>${escapeHtml(e.name)}</strong>: $${amt.toFixed(2)} <em>(Individual expense)</em>${settledTag}</li>`;
-                totalBurden += amt;
-                if (!settled) unsettledBurden += amt;
+                const ownShare = amt / tripPeople.length;
+                const othersShare = amt - ownShare;
+                paidNote = `Split — own share $${ownShare.toFixed(2)}, gets back $${othersShare.toFixed(2)}`;
+            } else if (e.type === "Individual" && targetKey === personId) {
+                paidNote = `Individual for self — $0.00 owed by others`;
+            } else if (e.type === "Individual") {
+                paidNote = `Individual paid for ${escapeHtml(targetName)} — gets back $${amt.toFixed(2)}`;
+            }
+
+            paidItemsHtml += `<li><strong>${escapeHtml(e.name)}</strong>: Paid $${amt.toFixed(2)} <em>(${paidNote})</em>${settledTag}</li>`;
+        }
+
+        // 2. Expenses Consumed / Share Assigned To This Person
+        if (e.type === "Split" && tripPeople.length > 0) {
+            const splitAmt = amt / tripPeople.length;
+            const payerTag = paidByKey === personId
+                ? '<span class="badge badge-self">Self-paid</span>'
+                : `Paid by ${escapeHtml(payerName)}`;
+
+            shareItemsHtml += `<li><strong>${escapeHtml(e.name)}</strong>: $${splitAmt.toFixed(2)} <em>(Split share of $${amt.toFixed(2)} — ${payerTag})</em>${settledTag}</li>`;
+            totalOverallShare += splitAmt;
+            if (!settled) unsettledShare += splitAmt;
+
+        } else if (e.type === "Individual" && targetKey === personId) {
+            const payerTag = paidByKey === personId
+                ? '<span class="badge badge-self">Self-paid</span>'
+                : `Paid by ${escapeHtml(payerName)}`;
+
+            shareItemsHtml += `<li><strong>${escapeHtml(e.name)}</strong>: $${amt.toFixed(2)} <em>(Individual — ${payerTag})</em>${settledTag}</li>`;
+            totalOverallShare += amt;
+            if (!settled) unsettledShare += amt;
+        }
+    });
+
+    const balances = calculateTripBalances(tripPeople, tripExpenses);
+    const settlements = computeSettlements(balances).filter(
+        t => t.fromId === personId || t.toId === personId
+    );
+
+    const net = unsettledPaid - unsettledShare;
+
+    let settlementLines = "";
+    if (settlements.length === 0) {
+        settlementLines = `<p class="muted" style="margin-top:6px;">No pending settlements for ${escapeHtml(personName)}.</p>`;
+    } else {
+        settlementLines = '<ul style="margin:6px 0 0 0; padding-left:20px;">';
+        settlements.forEach(t => {
+            if (t.fromId === personId) {
+                settlementLines += `<li class="negative">${escapeHtml(personName)} owes ${escapeHtml(t.toName)}: $${t.amount.toFixed(2)}</li>`;
+            } else {
+                settlementLines += `<li class="positive">${escapeHtml(t.fromName)} owes ${escapeHtml(personName)}: $${t.amount.toFixed(2)}</li>`;
             }
         });
+        settlementLines += "</ul>";
+    }
 
-    html += `</ul>
-        <p style="margin-bottom:4px;"><strong>Total Active Share (Unsettled): $${unsettledBurden.toFixed(2)}</strong></p>
-        <p class="muted" style="margin-top:0;">Total Overall Trip Share (Including Settled): $${totalBurden.toFixed(2)}</p>`;
-    content.innerHTML = html;
+    content.innerHTML = `
+        <div class="ind-section">
+            <h4>💸 Expenses Paid by ${escapeHtml(personName)}</h4>
+            ${paidItemsHtml ? `<ul>${paidItemsHtml}</ul>` : `<p class="muted" style="margin:0;">No expenses paid by ${escapeHtml(personName)}.</p>`}
+        </div>
+        <div class="ind-section">
+            <h4>🧾 ${escapeHtml(personName)}'s Expense Shares & Personal Items</h4>
+            ${shareItemsHtml ? `<ul>${shareItemsHtml}</ul>` : `<p class="muted" style="margin:0;">No expenses assigned to ${escapeHtml(personName)}.</p>`}
+        </div>
+        <div class="ind-summary">
+            <p><strong>Total Paid Out of Pocket (Unsettled):</strong> $${unsettledPaid.toFixed(2)}</p>
+            <p><strong>Total Share / Personal Cost (Unsettled):</strong> $${unsettledShare.toFixed(2)} <span class="muted">(Overall incl. settled: $${totalOverallShare.toFixed(2)})</span></p>
+            <p><strong>Net Balance for ${escapeHtml(personName)}:</strong> ${formatNetLabel(net, `(${personName} Gets Back)`, `(${personName} Owes)`)}</p>
+            ${settlementLines}
+        </div>
+    `;
 }
 
 init();
