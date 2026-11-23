@@ -4,13 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Trip Expense Tracker</title>
-    <link rel="stylesheet" href="style.css?v=5">
+    <link rel="stylesheet" href="style.css?v=6">
 </head>
 <body>
     <div id="app">
         <div class="header-bar">
             <h1>Expense Tracker</h1>
-            <button class="secondary btn-sm" onclick="init()">↻ Refresh Data</button>
+            <button class="secondary btn-sm sync-lock" onclick="init()">↻ Refresh Data</button>
         </div>
         <div id="sync-status" class="status-bar">Connecting to Google Sheets...</div>
 
@@ -22,12 +22,12 @@
             </select>
             <div class="btn-row">
                 <button onclick="loadTrip()">Load Selected Trip</button>
-                <button class="warning" onclick="editTrip()">Rename Trip</button>
-                <button class="danger" onclick="deleteTrip()">Delete Trip</button>
+                <button class="warning sync-lock" onclick="editTrip()">Rename Trip</button>
+                <button class="danger sync-lock" onclick="deleteTrip()">Delete Trip</button>
             </div>
             <hr>
             <input type="text" id="new-trip-name" placeholder="New Trip Name">
-            <button onclick="addTrip()">Create New Trip</button>
+            <button class="sync-lock" onclick="addTrip()">Create New Trip</button>
         </div>
 
         <!-- Screen 2: Active Trip Dashboard -->
@@ -38,9 +38,11 @@
             </div>
 
             <div class="card">
-                <h3>👥 Add People</h3>
-                <input type="text" id="new-person-name" placeholder="Person Name">
-                <button onclick="addPerson()">Add Person</button>
+                <h3>👥 People in Trip</h3>
+                <div class="inline-form">
+                    <input type="text" id="new-person-name" placeholder="Person Name">
+                    <button class="sync-lock" onclick="addPerson()">Add Person</button>
+                </div>
                 <div id="people-list"></div>
             </div>
 
@@ -60,7 +62,7 @@
                 <select id="exp-target" style="display:none;"><option value="">For Whom?</option></select>
 
                 <div class="btn-row">
-                    <button id="save-expense-btn" onclick="saveExpense()">Save Expense</button>
+                    <button id="save-expense-btn" class="sync-lock" onclick="saveExpense()">Save Expense</button>
                     <button id="cancel-edit-btn" class="secondary" style="display:none;" onclick="cancelEditExpense()">Cancel Edit</button>
                 </div>
             </div>
@@ -90,14 +92,15 @@
             </div>
 
             <div class="card">
-                <h3>⚖️ Balances <small class="muted">(Unsettled Expenses)</small></h3>
+                <h3>⚖️ Balances <small class="muted">(Unsettled Expenses & Settlements)</small></h3>
                 <div class="table-wrap">
                     <table>
                         <thead>
                             <tr>
                                 <th>Person</th>
-                                <th>Total Paid</th>
+                                <th>Expenses Paid</th>
                                 <th>Share Owed</th>
+                                <th>Lump-Sum Settlements</th>
                                 <th>Net Balance</th>
                             </tr>
                         </thead>
@@ -113,8 +116,13 @@
                 </select>
                 <div id="ind-view-content" style="margin-top:12px;"></div>
             </div>
+
+            <div class="card settlement-card">
+                <h3>🤝 Who Owes Whom <small class="muted">(Final Settlement Summary)</small></h3>
+                <div id="overall-settlements-content"></div>
+            </div>
         </div>
     </div>
-    <script src="app.js?v=5"></script>
+    <script src="app.js?v=6"></script>
 </body>
 </html>
