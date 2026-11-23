@@ -32,6 +32,20 @@ button.success:hover { background: #157347; }
 .person-chip { display: inline-flex; align-items: center; gap: 6px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 20px; padding: 5px 10px 5px 14px; font-size: 14px; font-weight: 600; color: #333; }
 .chip-btn { width: auto; padding: 2px 7px; margin: 0; font-size: 11px; border-radius: 12px; }
 
+/* Split Selector Box */
+.split-box { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 12px 14px; margin: 8px 0; }
+.split-header { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.split-controls { display: flex; align-items: center; gap: 6px; }
+.split-controls select { width: auto; padding: 6px 10px; margin: 0; font-size: 13px; }
+.participants-list { display: flex; flex-direction: column; gap: 6px; }
+.participant-row { display: flex; justify-content: space-between; align-items: center; background: #fff; border: 1px solid #e2e6ea; border-radius: 5px; padding: 7px 12px; }
+.participant-row.unchecked { opacity: 0.6; background: #f1f3f5; }
+.participant-check { display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 500; margin: 0; }
+.participant-check input[type="checkbox"] { width: 16px; height: 16px; margin: 0; cursor: pointer; }
+.participant-share { font-size: 13px; font-weight: 600; color: #0d6efd; }
+.custom-amt-input { width: 120px; padding: 5px 8px; margin: 0; text-align: right; font-size: 13px; }
+.split-status { margin-top: 8px; font-size: 13px; font-weight: 600; text-align: right; }
+
 .table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
 th, td { border: 1px solid #eee; padding: 10px; text-align: left; vertical-align: middle; }
@@ -48,16 +62,24 @@ th { background-color: #f8f9fa; }
 tr.settled-row td { color: #888; background-color: #fafafa; }
 tr.settled-row td.strike { text-decoration: line-through; }
 
+/* Individual View Clear Breakdown */
 .ind-section { background: #ffffff; border: 1px solid #d0e2ff; border-radius: 6px; padding: 12px 15px; margin-bottom: 10px; }
 .ind-section h4 { margin: 0 0 8px 0; font-size: 14px; color: #084298; }
 .ind-section ul { margin: 0; padding-left: 20px; }
 .ind-section li { margin-bottom: 6px; font-size: 14px; }
-.ind-summary { background: #ffffff; border: 1px solid #b6d4fe; border-radius: 6px; padding: 12px 15px; }
-.ind-summary p { margin: 4px 0; font-size: 14px; }
+
+.ind-summary { background: #ffffff; border: 1px solid #b6d4fe; border-radius: 6px; padding: 14px 16px; }
+.ind-summary h4 { margin: 0 0 10px 0; font-size: 14px; color: #084298; }
+.calc-table { width: 100%; border-collapse: collapse; margin: 0; }
+.calc-table td { border: none; border-bottom: 1px dashed #e9ecef; padding: 7px 4px; font-size: 14px; }
+.calc-table td:last-child { text-align: right; font-weight: 600; white-space: nowrap; }
+.calc-table tr.calc-total td { border-top: 2px solid #cfe2ff; border-bottom: none; padding-top: 10px; font-size: 15px; font-weight: bold; }
+.calc-sub { display: block; font-size: 12px; font-weight: normal; color: #6c757d; }
+.lifetime-note { margin-top: 12px; padding-top: 10px; border-top: 1px solid #e9ecef; font-size: 13px; color: #495057; }
 
 /* Bottom Settlement Summary */
 .settlement-card { background: #f3fbf7; border-color: #badbcc; }
-.settlement-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; background: #fff; border: 1px solid #d1e7dd; border-radius: 6px; padding: 10px 14px; margin-bottom: 8px; flex-wrap: wrap; }
+.settlement-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; background: #fff; border: 1px solid #d1e7dd; border-radius: 6px; padding: 10px 14px; margin-top: 8px; flex-wrap: wrap; }
 .settlement-history { margin-top: 14px; padding-top: 12px; border-top: 1px dashed #badbcc; }
 .settlement-history-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; background: #f8f9fa; border: 1px solid #e2e3e5; border-radius: 6px; padding: 8px 12px; margin-bottom: 6px; font-size: 13px; color: #555; flex-wrap: wrap; }
 
