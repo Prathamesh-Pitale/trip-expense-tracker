@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trip Expense Tracker</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <h1>Expense Tracker</h1>
+        
+        <div id="trip-screen" class="card">
+            <h2>Select or Add Trip</h2>
+            <select id="trip-select">
+                <option value="">-- Select a Trip --</option>
+            </select>
+            <button onclick="loadTrip()">Load Selected Trip</button>
+            <hr>
+            <input type="text" id="new-trip-name" placeholder="New Trip Name">
+            <button onclick="addTrip()">Create New Trip</button>
+        </div>
+
+        <div id="dashboard-screen" style="display:none;">
+            <h2 id="active-trip-name">Trip Name</h2>
+            <button class="secondary" onclick="backToTrips()">← Back to Trips</button>
+
+            <div class="card">
+                <h3>👥 Add People</h3>
+                <input type="text" id="new-person-name" placeholder="Person Name">
+                <button onclick="addPerson()">Add Person</button>
+                <div id="people-list"></div>
+            </div>
+
+            <div class="card">
+                <h3>💳 Add Expense</h3>
+                <input type="text" id="exp-name" placeholder="Expense Name (e.g., Dinner)">
+                <input type="text" id="exp-desc" placeholder="Description">
+                <input type="number" id="exp-amount" placeholder="Amount ($)">
+                
+                <select id="exp-paid-by"><option value="">Paid By...</option></select>
+                
+                <select id="exp-type" onchange="toggleIndTarget()">
+                    <option value="Split">Split Equally</option>
+                    <option value="Individual">Individual</option>
+                </select>
+                <select id="exp-target" style="display:none;"><option value="">For Whom?</option></select>
+                
+                <button onclick="addExpense()">Save Expense</button>
+            </div>
+
+            <div class="card">
+                <h3>📊 Expenses Log</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Description</th>
+                            <th>Amount</th>
+                            <th>Paid By</th>
+                            <th>Type</th>
+                        </tr>
+                    </thead>
+                    <tbody id="expenses-tbody"></tbody>
+                </table>
+                <h3 id="total-trip-expense" style="text-align:right;">Total: $0</h3>
+            </div>
+
+            <div class="card">
+                <h3>⚖️ Balances</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Person</th>
+                            <th>Total Paid</th>
+                            <th>Share Owed</th>
+                            <th>Net Balance</th>
+                        </tr>
+                    </thead>
+                    <tbody id="balances-tbody"></tbody>
+                </table>
+            </div>
+
+            <div class="card" style="background:#eef6ff;">
+                <h3>🔍 Individual View</h3>
+                <select id="ind-view-select" onchange="renderIndividualView()">
+                    <option value="">Select a person...</option>
+                </select>
+                <div id="ind-view-content" style="margin-top:10px;"></div>
+            </div>
+        </div>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
