@@ -9,21 +9,29 @@
 <body>
     <div id="app">
         <h1>Expense Tracker</h1>
-        
+
+        <!-- Screen 1: Trip Selection -->
         <div id="trip-screen" class="card">
             <h2>Select or Add Trip</h2>
             <select id="trip-select">
                 <option value="">-- Select a Trip --</option>
             </select>
-            <button onclick="loadTrip()">Load Selected Trip</button>
+            <div class="btn-row">
+                <button onclick="loadTrip()">Load Selected Trip</button>
+                <button class="warning" onclick="editTrip()">Rename Trip</button>
+                <button class="danger" onclick="deleteTrip()">Delete Trip</button>
+            </div>
             <hr>
             <input type="text" id="new-trip-name" placeholder="New Trip Name">
             <button onclick="addTrip()">Create New Trip</button>
         </div>
 
+        <!-- Screen 2: Active Trip Dashboard -->
         <div id="dashboard-screen" style="display:none;">
-            <h2 id="active-trip-name">Trip Name</h2>
-            <button class="secondary" onclick="backToTrips()">← Back to Trips</button>
+            <div class="header-bar">
+                <h2 id="active-trip-name">Trip Name</h2>
+                <button class="secondary" onclick="backToTrips()">← Back to Trips</button>
+            </div>
 
             <div class="card">
                 <h3>👥 Add People</h3>
@@ -32,53 +40,66 @@
                 <div id="people-list"></div>
             </div>
 
-            <div class="card">
-                <h3>💳 Add Expense</h3>
+            <div class="card" id="expense-form-card">
+                <h3 id="expense-form-title">💳 Add Expense</h3>
+                <input type="hidden" id="edit-expense-id">
                 <input type="text" id="exp-name" placeholder="Expense Name (e.g., Dinner)">
                 <input type="text" id="exp-desc" placeholder="Description">
-                <input type="number" id="exp-amount" placeholder="Amount ($)">
-                
+                <input type="number" id="exp-amount" step="0.01" placeholder="Amount">
+
                 <select id="exp-paid-by"><option value="">Paid By...</option></select>
-                
+
                 <select id="exp-type" onchange="toggleIndTarget()">
                     <option value="Split">Split Equally</option>
                     <option value="Individual">Individual</option>
                 </select>
                 <select id="exp-target" style="display:none;"><option value="">For Whom?</option></select>
-                
-                <button onclick="addExpense()">Save Expense</button>
+
+                <div class="btn-row">
+                    <button id="save-expense-btn" onclick="saveExpense()">Save Expense</button>
+                    <button id="cancel-edit-btn" class="secondary" style="display:none;" onclick="cancelEditExpense()">Cancel Edit</button>
+                </div>
             </div>
 
             <div class="card">
                 <h3>📊 Expenses Log</h3>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Name</th>
-                            <th>Description</th>
-                            <th>Amount</th>
-                            <th>Paid By</th>
-                            <th>Type</th>
-                        </tr>
-                    </thead>
-                    <tbody id="expenses-tbody"></tbody>
-                </table>
-                <h3 id="total-trip-expense" style="text-align:right;">Total: $0</h3>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Status</th>
+                                <th>Name</th>
+                                <th>Description</th>
+                                <th>Amount</th>
+                                <th>Paid By</th>
+                                <th>Type</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="expenses-tbody"></tbody>
+                    </table>
+                </div>
+                <div class="totals-box">
+                    <p id="total-trip-expense">Total Trip Expense: $0.00</p>
+                    <p id="unsettled-trip-expense">Unsettled Remaining: $0.00</p>
+                </div>
             </div>
 
             <div class="card">
-                <h3>⚖️ Balances</h3>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Person</th>
-                            <th>Total Paid</th>
-                            <th>Share Owed</th>
-                            <th>Net Balance</th>
-                        </tr>
-                    </thead>
-                    <tbody id="balances-tbody"></tbody>
-                </table>
+                <h3>⚖️ Balances <small class="muted">(Unsettled Expenses)</small></h3>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Person</th>
+                                <th>Total Paid</th>
+                                <th>Share Owed</th>
+                                <th>Net Balance</th>
+                            </tr>
+                        </thead>
+                        <tbody id="balances-tbody"></tbody>
+                    </table>
+                </div>
             </div>
 
             <div class="card" style="background:#eef6ff;">
