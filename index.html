@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Trip Expense Tracker</title>
-    <link rel="stylesheet" href="style.css?v=6">
+    <link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
     <div id="app">
@@ -50,16 +50,27 @@
                 <h3 id="expense-form-title">💳 Add Expense</h3>
                 <input type="hidden" id="edit-expense-id">
                 <input type="text" id="exp-name" placeholder="Expense Name (e.g., Dinner)">
-                <input type="text" id="exp-desc" placeholder="Description">
-                <input type="number" id="exp-amount" step="0.01" placeholder="Amount (₹)">
+                <input type="text" id="exp-desc" placeholder="Description (optional)">
+                <input type="number" id="exp-amount" step="0.01" placeholder="Total Amount (₹)" oninput="updateSplitPreview()">
 
                 <select id="exp-paid-by"><option value="">Paid By...</option></select>
 
-                <select id="exp-type" onchange="toggleIndTarget()">
-                    <option value="Split">Split Equally</option>
-                    <option value="Individual">Individual</option>
-                </select>
-                <select id="exp-target" style="display:none;"><option value="">For Whom?</option></select>
+                <!-- Split Mode & Participant Selector -->
+                <div class="split-box">
+                    <div class="split-header">
+                        <label for="exp-split-mode"><strong>Split Between:</strong></label>
+                        <div class="split-controls">
+                            <select id="exp-split-mode" onchange="onSplitModeChange()">
+                                <option value="Equal">Split Equally</option>
+                                <option value="Custom">Custom Amounts (₹)</option>
+                            </select>
+                            <button type="button" class="btn-sm secondary" onclick="selectAllParticipants(true)">All</button>
+                            <button type="button" class="btn-sm secondary" onclick="selectAllParticipants(false)">None</button>
+                        </div>
+                    </div>
+                    <div id="split-participants-list" class="participants-list"></div>
+                    <div id="split-status-bar" class="split-status"></div>
+                </div>
 
                 <div class="btn-row">
                     <button id="save-expense-btn" class="sync-lock" onclick="saveExpense()">Save Expense</button>
@@ -78,7 +89,7 @@
                                 <th>Description</th>
                                 <th>Amount</th>
                                 <th>Paid By</th>
-                                <th>Type</th>
+                                <th>Split Details</th>
                                 <th class="actions-col">Actions</th>
                             </tr>
                         </thead>
@@ -98,9 +109,9 @@
                         <thead>
                             <tr>
                                 <th>Person</th>
-                                <th>Expenses Paid</th>
-                                <th>Share Owed</th>
-                                <th>Lump-Sum Settlements</th>
+                                <th>Bills Paid</th>
+                                <th>Own Share</th>
+                                <th>Settle-Up Transfers</th>
                                 <th>Net Balance</th>
                             </tr>
                         </thead>
@@ -123,6 +134,6 @@
             </div>
         </div>
     </div>
-    <script src="app.js?v=6"></script>
+    <script src="app.js?v=7"></script>
 </body>
 </html>
