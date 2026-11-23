@@ -1,13 +1,21 @@
 const API_URL = "/sync";
 
-let data = { trips: [], people: [], expenses: [] };
+let data = { trips: [], people: [], expenses: [], settlements: [] };
 let activeTripId = null;
+let isSyncing = false;
 
 function setStatus(msg, type = "") {
     const bar = document.getElementById("sync-status");
     if (!bar) return;
     bar.innerText = msg;
     bar.className = "status-bar" + (type ? " " + type : "");
+}
+
+function setSyncLock(locked) {
+    isSyncing = locked;
+    document.querySelectorAll(".sync-lock").forEach(btn => {
+        btn.disabled = locked;
+    });
 }
 
 function isSettled(exp) {
@@ -40,7 +48,9 @@ function formatNetLabel(net, getsBackText = "(Gets Back)", owesText = "(Owes)") 
 }
 
 async function init() {
-    setStatus("Loading data from Google Sheets...");
+    if (isSyncing) return;
+    setSyncLock(true);
+    setStatus("Loading data from Google Sheets...", "saving");
     try {
         const response = await fetch(API_URL);
         const result = await response.json();
@@ -50,19 +60,23 @@ async function init() {
         data = {
             trips: result.trips || [],
             people: result.people || [],
-            expenses: result.expenses || []
+            expenses: result.expenses || [],
+            settlements: result.settlements || []
         };
-        renderTrips(activeTripId || "");
-        if (activeTripId) renderDashboard();
         setStatus("Synced with Google Sheets ✓", "ok");
     } catch (e) {
         console.error("Failed to load data", e);
         setStatus("Error: " + e.message, "err");
+    } finally {
+        setSyncLock(false);
+        renderTrips(activeTripId || "");
+        if (activeTripId) renderDashboard();
     }
 }
 
 async function syncData(action, payload) {
-    setStatus("Saving changes to Google Sheets...");
+    setSyncLock(true);
+    setStatus("Saving changes to Google Sheets...", "saving");
     try {
         const response = await fetch(API_URL, {
             method: "POST",
@@ -78,6 +92,10 @@ async function syncData(action, payload) {
         console.error("Sync failed", e);
         setStatus("Sync failed: " + e.message, "err");
         alert("Failed to sync with Google Sheets: " + e.message);
+    } finally {
+        setSyncLock(false);
+        renderTrips(activeTripId || "");
+        if (activeTripId) renderDashboard();
     }
 }
 
@@ -93,16 +111,18 @@ function renderTrips(selectedId = "") {
 }
 
 function addTrip() {
+    if (isSyncing) return;
     const name = document.getElementById("new-trip-name").value.trim();
     if (!name) return;
     const newTrip = { id: Date.now().toString(), name };
     data.trips.push(newTrip);
+    document.getElementById("new-trip-name").value = "";
     renderTrips(newTrip.id);
     syncData("addTrip", newTrip);
-    document.getElementById("new-trip-name").value = "";
 }
 
 function editTrip() {
+    if (isSyncing) return;
     const tripId = document.getElementById("trip-select").value;
     if (!tripId) return alert("Please select a trip from the dropdown first.");
 
@@ -118,17 +138,19 @@ function editTrip() {
 }
 
 function deleteTrip() {
+    if (isSyncing) return;
     const tripId = document.getElementById("trip-select").value;
     if (!tripId) return alert("Please select a trip from the dropdown first.");
 
     const trip = data.trips.find(t => String(t.id).trim() === String(tripId).trim());
     if (!trip) return;
 
-    if (!confirm(`Delete "${trip.name}" along with all its people and expenses?`)) return;
+    if (!confirm(`Delete "${trip.name}" along with all its people, expenses, and settlements?`)) return;
 
     data.trips = data.trips.filter(t => String(t.id).trim() !== String(tripId).trim());
     data.people = data.people.filter(p => String(p.tripId).trim() !== String(tripId).trim());
     data.expenses = data.expenses.filter(e => String(e.tripId).trim() !== String(tripId).trim());
+    data.settlements = data.settlements.filter(s => String(s.tripId).trim() !== String(tripId).trim());
 
     renderTrips();
     syncData("deleteTrip", { id: tripId });
@@ -155,16 +177,68 @@ function backToTrips() {
     renderTrips();
 }
 
-// --- PEOPLE MANAGEMENT ---
+// --- PEOPLE MANAGEMENT (ADD / EDIT / DELETE) ---
 
 function addPerson() {
+    if (isSyncing) return;
     const name = document.getElementById("new-person-name").value.trim();
     if (!name) return;
     const newPerson = { id: Date.now().toString(), tripId: activeTripId, name };
     data.people.push(newPerson);
     document.getElementById("new-person-name").value = "";
-    syncData("addPerson", newPerson);
     renderDashboard();
+    syncData("addPerson", newPerson);
+}
+
+function editPerson(personId) {
+    if (isSyncing) return;
+    const person = data.people.find(p => String(p.id).trim() === String(personId).trim());
+    if (!person) return;
+
+    const newName = prompt("Rename person:", person.name);
+    if (!newName || !newName.trim() || newName.trim() === person.name) return;
+
+    person.name = newName.trim();
+    renderDashboard();
+    syncData("editPerson", { id: person.id, name: person.name });
+}
+
+function deletePerson(personId) {
+    if (isSyncing) return;
+    const personKey = String(personId).trim();
+    const person = data.people.find(p => String(p.id).trim() === personKey);
+    if (!person) return;
+
+    const tripExpenses = data.expenses.filter(e => String(e.tripId).trim() === String(activeTripId).trim());
+    const tripSettlements = data.settlements.filter(s => String(s.tripId).trim() === String(activeTripId).trim());
+
+    // Block deletion if tied directly to any expense or settlement
+    const tiedExpenses = tripExpenses.filter(
+        e => String(e.paidBy).trim() === personKey || String(e.target).trim() === personKey
+    );
+    const tiedSettlements = tripSettlements.filter(
+        s => String(s.fromId).trim() === personKey || String(s.toId).trim() === personKey
+    );
+
+    if (tiedExpenses.length > 0 || tiedSettlements.length > 0) {
+        return alert(
+            `Cannot delete "${person.name}" because they are tied to ${tiedExpenses.length} expense(s) and ${tiedSettlements.length} settlement(s). Edit or delete those entries first.`
+        );
+    }
+
+    // Also check if trip has Split expenses (which include all trip members)
+    const hasSplitExpenses = tripExpenses.some(e => e.type === "Split");
+    if (hasSplitExpenses) {
+        return alert(
+            `Cannot delete "${person.name}" while Split expenses exist in this trip, as removing them would alter existing split shares.`
+        );
+    }
+
+    if (!confirm(`Remove "${person.name}" from this trip?`)) return;
+
+    data.people = data.people.filter(p => String(p.id).trim() !== personKey);
+    renderDashboard();
+    syncData("deletePerson", { id: personId });
 }
 
 // --- EXPENSE MANAGEMENT ---
@@ -175,6 +249,7 @@ function toggleIndTarget() {
 }
 
 function startEditExpense(expenseId) {
+    if (isSyncing) return;
     const exp = data.expenses.find(e => String(e.id).trim() === String(expenseId).trim());
     if (!exp) return;
 
@@ -209,6 +284,7 @@ function cancelEditExpense() {
 }
 
 function saveExpense() {
+    if (isSyncing) return;
     const editId = document.getElementById("edit-expense-id").value;
     const name = document.getElementById("exp-name").value.trim();
     const desc = document.getElementById("exp-desc").value.trim();
@@ -233,9 +309,10 @@ function saveExpense() {
             exp.paidBy = paidBy;
             exp.type = type;
             exp.target = target;
+            cancelEditExpense();
+            renderDashboard();
             syncData("editExpense", exp);
         }
-        cancelEditExpense();
     } else {
         const newExp = {
             id: Date.now().toString(),
@@ -249,14 +326,14 @@ function saveExpense() {
             settled: false
         };
         data.expenses.push(newExp);
-        syncData("addExpense", newExp);
         cancelEditExpense();
+        renderDashboard();
+        syncData("addExpense", newExp);
     }
-
-    renderDashboard();
 }
 
 function deleteExpense(expenseId) {
+    if (isSyncing) return;
     const exp = data.expenses.find(e => String(e.id).trim() === String(expenseId).trim());
     if (!exp) return;
 
@@ -267,25 +344,67 @@ function deleteExpense(expenseId) {
     }
 
     data.expenses = data.expenses.filter(e => String(e.id).trim() !== String(expenseId).trim());
-    syncData("deleteExpense", { id: expenseId });
     renderDashboard();
+    syncData("deleteExpense", { id: expenseId });
 }
 
 function toggleSettleExpense(expenseId) {
+    if (isSyncing) return;
     const exp = data.expenses.find(e => String(e.id).trim() === String(expenseId).trim());
     if (!exp) return;
 
     exp.settled = !isSettled(exp);
-    syncData("toggleSettleExpense", { id: expenseId, settled: exp.settled });
     renderDashboard();
+    syncData("toggleSettleExpense", { id: expenseId, settled: exp.settled });
+}
+
+// --- LUMP-SUM SETTLEMENT PAYMENTS ---
+
+function markSettlementPaid(fromId, toId, amount) {
+    if (isSyncing) return;
+    const tripPeople = data.people.filter(p => String(p.tripId).trim() === String(activeTripId).trim());
+    const fromName = tripPeople.find(p => String(p.id).trim() === String(fromId).trim())?.name || "Person";
+    const toName = tripPeople.find(p => String(p.id).trim() === String(toId).trim())?.name || "Person";
+    const roundedAmt = Math.round((Number(amount) || 0) * 100) / 100;
+
+    if (roundedAmt <= 0) return;
+    if (!confirm(`Record lump-sum payment of ${formatMoney(roundedAmt)} from ${fromName} to ${toName}?`)) return;
+
+    const newSettlement = {
+        id: Date.now().toString(),
+        tripId: activeTripId,
+        fromId: String(fromId).trim(),
+        toId: String(toId).trim(),
+        amount: roundedAmt,
+        createdAt: new Date().toISOString()
+    };
+
+    data.settlements.push(newSettlement);
+    renderDashboard();
+    syncData("addSettlement", newSettlement);
+}
+
+function undoSettlement(settlementId) {
+    if (isSyncing) return;
+    if (!confirm("Remove this recorded settlement payment?")) return;
+
+    data.settlements = data.settlements.filter(s => String(s.id).trim() !== String(settlementId).trim());
+    renderDashboard();
+    syncData("deleteSettlement", { id: settlementId });
 }
 
 // --- CALCULATIONS & RENDERING ---
 
-function calculateTripBalances(tripPeople, tripExpenses) {
+function calculateTripBalances(tripPeople, tripExpenses, tripSettlements) {
     const balances = {};
     tripPeople.forEach(p => {
-        balances[String(p.id).trim()] = { id: String(p.id).trim(), name: p.name, paid: 0, share: 0 };
+        balances[String(p.id).trim()] = {
+            id: String(p.id).trim(),
+            name: p.name,
+            paid: 0,
+            share: 0,
+            settlementDelta: 0 // + when payer sends settlement, - when recipient receives settlement
+        };
     });
 
     tripExpenses.forEach(e => {
@@ -310,6 +429,14 @@ function calculateTripBalances(tripPeople, tripExpenses) {
         }
     });
 
+    tripSettlements.forEach(s => {
+        const amt = parseFloat(s.amount) || 0;
+        const fromKey = String(s.fromId).trim();
+        const toKey = String(s.toId).trim();
+        if (balances[fromKey]) balances[fromKey].settlementDelta += amt;
+        if (balances[toKey]) balances[toKey].settlementDelta -= amt;
+    });
+
     return balances;
 }
 
@@ -318,7 +445,7 @@ function computeSettlements(balances) {
     const creditors = [];
 
     Object.values(balances).forEach(b => {
-        const net = b.paid - b.share;
+        const net = b.paid - b.share + b.settlementDelta;
         if (net < -0.005) debtors.push({ id: b.id, name: b.name, amount: -net });
         else if (net > 0.005) creditors.push({ id: b.id, name: b.name, amount: net });
     });
@@ -347,9 +474,22 @@ function computeSettlements(balances) {
 function renderDashboard() {
     const tripPeople = data.people.filter(p => String(p.tripId).trim() === String(activeTripId).trim());
     const tripExpenses = data.expenses.filter(e => String(e.tripId).trim() === String(activeTripId).trim());
+    const tripSettlements = data.settlements.filter(s => String(s.tripId).trim() === String(activeTripId).trim());
+    const disabledAttr = isSyncing ? "disabled" : "";
 
-    document.getElementById("people-list").innerText =
-        "People: " + (tripPeople.length ? tripPeople.map(p => p.name).join(", ") : "None added yet");
+    // Render People List with Rename & Delete controls
+    const peopleContainer = document.getElementById("people-list");
+    if (tripPeople.length === 0) {
+        peopleContainer.innerHTML = `<p class="muted" style="margin:10px 0 0 0;">No people added yet.</p>`;
+    } else {
+        peopleContainer.innerHTML = `<div class="people-grid">` + tripPeople.map(p => `
+            <div class="person-chip">
+                <span>${escapeHtml(p.name)}</span>
+                <button class="chip-btn warning sync-lock" ${disabledAttr} onclick="editPerson('${escapeHtml(p.id)}')" title="Rename">Edit</button>
+                <button class="chip-btn danger sync-lock" ${disabledAttr} onclick="deletePerson('${escapeHtml(p.id)}')" title="Remove">✕</button>
+            </div>
+        `).join("") + `</div>`;
+    }
 
     const prevPaidBy = document.getElementById("exp-paid-by").value;
     const prevTarget = document.getElementById("exp-target").value;
@@ -401,9 +541,9 @@ function renderDashboard() {
             <td>${escapeHtml(e.type + targetName)}</td>
             <td class="actions-col">
                 <div class="action-group">
-                    <button class="btn-sm ${settleBtnClass}" onclick="toggleSettleExpense('${escapeHtml(e.id)}')">${settleBtnLabel}</button>
-                    <button class="btn-sm warning" onclick="startEditExpense('${escapeHtml(e.id)}')">Edit</button>
-                    <button class="btn-sm danger" onclick="deleteExpense('${escapeHtml(e.id)}')">Delete</button>
+                    <button class="btn-sm ${settleBtnClass} sync-lock" ${disabledAttr} onclick="toggleSettleExpense('${escapeHtml(e.id)}')">${settleBtnLabel}</button>
+                    <button class="btn-sm warning sync-lock" ${disabledAttr} onclick="startEditExpense('${escapeHtml(e.id)}')">Edit</button>
+                    <button class="btn-sm danger sync-lock" ${disabledAttr} onclick="deleteExpense('${escapeHtml(e.id)}')">Delete</button>
                 </div>
             </td>
         </tr>`;
@@ -412,24 +552,34 @@ function renderDashboard() {
     document.getElementById("total-trip-expense").innerText = `Total Trip Expense: ${formatMoney(totalExp)}`;
     document.getElementById("unsettled-trip-expense").innerText = `Unsettled Remaining: ${formatMoney(unsettledExp)}`;
 
-    const balances = calculateTripBalances(tripPeople, tripExpenses);
+    const balances = calculateTripBalances(tripPeople, tripExpenses, tripSettlements);
     const balTbody = document.getElementById("balances-tbody");
     balTbody.innerHTML = "";
 
     Object.values(balances).forEach(b => {
-        const net = b.paid - b.share;
+        const net = b.paid - b.share + b.settlementDelta;
+        let settleCol = `<span class="muted">₹0.00</span>`;
+        if (b.settlementDelta > 0.005) {
+            settleCol = `<span class="positive">+${formatMoney(b.settlementDelta)} (Paid)</span>`;
+        } else if (b.settlementDelta < -0.005) {
+            settleCol = `<span class="negative">-${formatMoney(Math.abs(b.settlementDelta))} (Rec'd)</span>`;
+        }
+
         balTbody.innerHTML += `<tr>
             <td>${escapeHtml(b.name)}</td>
             <td>${formatMoney(b.paid)}</td>
             <td>${formatMoney(b.share)}</td>
+            <td>${settleCol}</td>
             <td>${formatNetLabel(net)}</td>
         </tr>`;
     });
 
-    renderIndividualView();
+    const allTransfers = computeSettlements(balances);
+    renderIndividualView(balances, allTransfers);
+    renderOverallSettlements(tripPeople, tripSettlements, allTransfers);
 }
 
-function renderIndividualView() {
+function renderIndividualView(precomputedBalances, precomputedTransfers) {
     const personId = String(document.getElementById("ind-view-select").value).trim();
     const content = document.getElementById("ind-view-content");
     if (!personId) {
@@ -439,8 +589,10 @@ function renderIndividualView() {
 
     const tripPeople = data.people.filter(p => String(p.tripId).trim() === String(activeTripId).trim());
     const tripExpenses = data.expenses.filter(e => String(e.tripId).trim() === String(activeTripId).trim());
+    const tripSettlements = data.settlements.filter(s => String(s.tripId).trim() === String(activeTripId).trim());
     const selectedPerson = tripPeople.find(p => String(p.id).trim() === personId);
     const personName = selectedPerson ? selectedPerson.name : "Person";
+    const disabledAttr = isSyncing ? "disabled" : "";
 
     let paidItemsHtml = "";
     let shareItemsHtml = "";
@@ -461,7 +613,6 @@ function renderIndividualView() {
 
         const settledTag = settled ? ' <span class="badge badge-settled">Settled</span>' : "";
 
-        // 1. Expenses Paid By This Person
         if (paidByKey === personId) {
             if (!settled) unsettledPaid += amt;
 
@@ -479,7 +630,6 @@ function renderIndividualView() {
             paidItemsHtml += `<li><strong>${escapeHtml(e.name)}</strong>: Paid ${formatMoney(amt)} <em>(${paidNote})</em>${settledTag}</li>`;
         }
 
-        // 2. Expenses Consumed / Share Assigned To This Person
         if (e.type === "Split" && tripPeople.length > 0) {
             const splitAmt = amt / tripPeople.length;
             const payerTag = paidByKey === personId
@@ -501,26 +651,31 @@ function renderIndividualView() {
         }
     });
 
-    const balances = calculateTripBalances(tripPeople, tripExpenses);
-    const settlements = computeSettlements(balances).filter(
+    const balances = precomputedBalances || calculateTripBalances(tripPeople, tripExpenses, tripSettlements);
+    const personBal = balances[personId] || { paid: 0, share: 0, settlementDelta: 0 };
+    const net = personBal.paid - personBal.share + personBal.settlementDelta;
+
+    const settlements = (precomputedTransfers || computeSettlements(balances)).filter(
         t => t.fromId === personId || t.toId === personId
     );
 
-    const net = unsettledPaid - unsettledShare;
-
     let settlementLines = "";
     if (settlements.length === 0) {
-        settlementLines = `<p class="muted" style="margin-top:6px;">No pending settlements for ${escapeHtml(personName)}.</p>`;
+        settlementLines = `<p class="muted" style="margin-top:8px;">No pending settlements for ${escapeHtml(personName)}.</p>`;
     } else {
-        settlementLines = '<ul style="margin:6px 0 0 0; padding-left:20px;">';
+        settlementLines = `<div style="margin-top:10px;">`;
         settlements.forEach(t => {
-            if (t.fromId === personId) {
-                settlementLines += `<li class="negative">${escapeHtml(personName)} owes ${escapeHtml(t.toName)}: ${formatMoney(t.amount)}</li>`;
-            } else {
-                settlementLines += `<li class="positive">${escapeHtml(t.fromName)} owes ${escapeHtml(personName)}: ${formatMoney(t.amount)}</li>`;
-            }
+            const text = t.fromId === personId
+                ? `<span class="negative">${escapeHtml(personName)} owes ${escapeHtml(t.toName)}: ${formatMoney(t.amount)}</span>`
+                : `<span class="positive">${escapeHtml(t.fromName)} owes ${escapeHtml(personName)}: ${formatMoney(t.amount)}</span>`;
+
+            settlementLines += `
+                <div class="settlement-row">
+                    <div>${text}</div>
+                    <button class="btn-sm success sync-lock" ${disabledAttr} onclick="markSettlementPaid('${escapeHtml(t.fromId)}', '${escapeHtml(t.toId)}', ${t.amount})">Mark Paid</button>
+                </div>`;
         });
-        settlementLines += "</ul>";
+        settlementLines += `</div>`;
     }
 
     content.innerHTML = `
@@ -533,12 +688,53 @@ function renderIndividualView() {
             ${shareItemsHtml ? `<ul>${shareItemsHtml}</ul>` : `<p class="muted" style="margin:0;">No expenses assigned to ${escapeHtml(personName)}.</p>`}
         </div>
         <div class="ind-summary">
-            <p><strong>Total Paid Out of Pocket (Unsettled):</strong> ${formatMoney(unsettledPaid)}</p>
-            <p><strong>Total Share / Personal Cost (Unsettled):</strong> ${formatMoney(unsettledShare)} <span class="muted">(Overall incl. settled: ${formatMoney(totalOverallShare)})</span></p>
+            <p><strong>Expenses Paid Out of Pocket (Unsettled):</strong> ${formatMoney(unsettledPaid)}</p>
+            <p><strong>Share / Personal Cost (Unsettled):</strong> ${formatMoney(unsettledShare)} <span class="muted">(Overall incl. settled: ${formatMoney(totalOverallShare)})</span></p>
+            <p><strong>Lump-Sum Settlements Applied:</strong> ${personBal.settlementDelta >= 0 ? "+" : "-"}${formatMoney(Math.abs(personBal.settlementDelta))}</p>
             <p><strong>Net Balance for ${escapeHtml(personName)}:</strong> ${formatNetLabel(net, `(${personName} Gets Back)`, `(${personName} Owes)`)}</p>
             ${settlementLines}
         </div>
     `;
+}
+
+function renderOverallSettlements(tripPeople, tripSettlements, allTransfers) {
+    const container = document.getElementById("overall-settlements-content");
+    if (!container) return;
+
+    const disabledAttr = isSyncing ? "disabled" : "";
+    let html = "";
+
+    if (allTransfers.length === 0) {
+        html += `<p class="positive" style="margin:4px 0;">✓ Everyone is completely settled up! No pending dues.</p>`;
+    } else {
+        allTransfers.forEach(t => {
+            html += `
+                <div class="settlement-row">
+                    <div>
+                        <strong>${escapeHtml(t.fromName)}</strong> owes <strong>${escapeHtml(t.toName)}</strong>:
+                        <span class="negative">${formatMoney(t.amount)}</span>
+                    </div>
+                    <button class="btn-sm success sync-lock" ${disabledAttr} onclick="markSettlementPaid('${escapeHtml(t.fromId)}', '${escapeHtml(t.toId)}', ${t.amount})">Mark Settled</button>
+                </div>`;
+        });
+    }
+
+    if (tripSettlements.length > 0) {
+        html += `<div class="settlement-history">
+            <p class="muted" style="margin:0 0 8px 0;"><strong>Recorded Lump-Sum Payments:</strong></p>`;
+        tripSettlements.forEach(s => {
+            const fromName = tripPeople.find(p => String(p.id).trim() === String(s.fromId).trim())?.name || "Unknown";
+            const toName = tripPeople.find(p => String(p.id).trim() === String(s.toId).trim())?.name || "Unknown";
+            html += `
+                <div class="settlement-history-row">
+                    <span>✓ <strong>${escapeHtml(fromName)}</strong> paid <strong>${escapeHtml(toName)}</strong> ${formatMoney(s.amount)}</span>
+                    <button class="btn-sm secondary sync-lock" ${disabledAttr} onclick="undoSettlement('${escapeHtml(s.id)}')">Undo</button>
+                </div>`;
+        });
+        html += `</div>`;
+    }
+
+    container.innerHTML = html;
 }
 
 init();
